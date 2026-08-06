@@ -4,7 +4,8 @@
 Gains vs v1 : ~15x plus d'itérations/s, pools 2x plus larges, optimum local
 1-swap certifié, arrêt anticipé quand les restarts convergent.
 """
-import json, random
+import json
+import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -77,13 +78,14 @@ class Engine:
     """Indexe les stats utiles, projette items et bonus de panos en vecteurs compacts."""
 
     def __init__(self, W, items, sets, slot_types, pa_target=5, pm_target=3,
-                 res_exo_budget=0.0, res_cap=50.0, roll='max', locks=None):
+                 res_exo_budget=0.0, res_cap=50.0, roll='max', locks=None, bans=None):
         # res_exo_budget: total de % res ajoutable à la rune (ex: 8 pièces x 3.5%),
         # alloué optimalement par water-filling dans fitness(). Trophées/Dofus non magables.
         # roll: 'max' | 'avg' | 'p80' — jet des stats d'items.
         # locks: {slot: nom d'item} — force un item possédé dans un slot.
         self.res_budget, self.res_cap = res_exo_budget, res_cap
         self.roll = roll
+        self.bans = set(bans or ())
         self.stat_ix = {}
         for name in list(W) + ['PA', 'PM', 'Portée'] + RES_NAMES:
             self.stat_ix.setdefault(name, len(self.stat_ix))
@@ -122,7 +124,8 @@ class Engine:
     def _pools(self, W, slot_types):
         pools = {}
         for slot, types in slot_types.items():
-            cand = [it for it in self.items if it['type']['name'] in types]
+            cand = [it for it in self.items
+                    if it['type']['name'] in types and it['name'] not in self.bans]
             score = lambda it: sum(self.wlin[i] * v for i, v in it['_vec'])
             cand.sort(key=score, reverse=True)
             top = cand[:90]

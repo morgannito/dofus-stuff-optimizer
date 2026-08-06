@@ -1,0 +1,10 @@
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E731"]  # lambdas assignées: assumé pour les fonctions de score locales
+
+[lint.per-file-ignores]
+"tests/*" = ["E702"]      # style compact volontaire dans les fixtures
+"gen_page.py" = ["E501"]  # gabarit HTML/JS embarqué

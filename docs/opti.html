@@ -78,6 +78,8 @@ input[type=range]{accent-color:var(--accent);width:150px}
 Voir aussi les <a href="index.html">5 builds pré-calculés</a>.</p>
 
 <div class="controls panel">
+  <div class="ctl"><label>Classe</label>
+    <select id="classe"><option value="sacrieur">Sacrieur</option></select></div>
   <div class="ctl"><label>Élément</label>
     <div class="seg" id="elem">
       <button data-v="t" class="on">Terre</button><button data-v="f">Feu</button>
@@ -97,7 +99,13 @@ Voir aussi les <a href="index.html">5 builds pré-calculés</a>.</p>
     <select id="rolls"><option value="max">parfaits</option><option value="avg">moyens</option><option value="p80">80 %</option></select></div>
   <div class="ctl"><label>Dofus</label>
     <select id="dofus"><option value="0">sans</option><option value="1">autorisés</option></select></div>
+  <div class="ctl"><label>Recherche</label>
+    <select id="depth"><option value="4,15000">rapide</option><option value="6,30000" selected>normale</option><option value="10,60000">longue</option></select></div>
   <button id="go">Forger</button>
+</div>
+<div id="bans" style="display:none;margin:-8px 0 12px" class="panel">
+  <span style="font-size:12px;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Items bannis :</span>
+  <span id="banlist"></span>
 </div>
 <div id="prog"><span></span></div>
 <p id="status">Chargement des données…</p>
@@ -132,8 +140,51 @@ const DOELEM={t:"Dommage Terre",f:"Dommage Feu",e:"Dommage Eau",a:"Dommage Air"}
 const WEAPONS=new Set(["Épée","Marteau","Bâton","Dague","Baguette","Arc","Hache","Pelle","Faux","Lance"]);
 const SLOTLAB={coiffe:"Coiffe",cape:"Cape",amulette:"Amulette",ceinture:"Ceinture",bottes:"Bottes",anneau1:"Anneau",anneau2:"Anneau",arme:"Arme",bouclier:"Bouclier",d1:"Dofus/Trophée",d2:"Dofus/Trophée",d3:"Dofus/Trophée",d4:"Dofus/Trophée",d5:"Dofus/Trophée",d6:"Dofus/Trophée",familier:"Familier"};
 let DB=null, elem="t";
+const BANS=new Set();
 
-fetch("webdata.json").then(r=>r.json()).then(d=>{DB=d;$("status").textContent="Prêt. Configure et clique Forger.";});
+function loadHash(){
+  try{
+    const h=JSON.parse(decodeURIComponent(location.hash.slice(1)||"{}"));
+    if(h.el){elem=h.el;document.querySelectorAll("#elem button").forEach(b=>b.classList.toggle("on",b.dataset.v===elem));}
+    if(h.cl)$("classe").value=h.cl;
+    if(h.md)$("mode").value=h.md;
+    if(h.wd){$("wdef").value=h.wd;$("wdef").dispatchEvent(new Event("input"));}
+    if(h.ru!==undefined)$("runes").value=h.ru;
+    if(h.ro)$("rolls").value=h.ro;
+    if(h.df)$("dofus").value=h.df;
+    if(h.dp)$("depth").value=h.dp;
+    (h.bn||[]).forEach(n=>BANS.add(n));renderBans();
+  }catch(e){}
+}
+function saveHash(){
+  const h={el:elem,cl:$("classe").value,md:$("mode").value,wd:$("wdef").value,
+    ru:$("runes").value,ro:$("rolls").value,df:$("dofus").value,dp:$("depth").value,
+    bn:[...BANS]};
+  history.replaceState(null,"","#"+encodeURIComponent(JSON.stringify(h)));
+}
+function renderBans(){
+  $("bans").style.display=BANS.size?"":"none";
+  $("banlist").innerHTML=[...BANS].map(n=>
+    ` <button type="button" class="banchip" data-n="${n.replace(/"/g,"&quot;")}"
+      style="border:1px solid var(--line);background:none;color:var(--ink);border-radius:12px;
+      padding:2px 10px;font-size:12px;cursor:pointer;margin:2px">${n} ✕</button>`).join("");
+}
+$("banlist")?.addEventListener?.("click",()=>{});
+document.addEventListener("click",e=>{
+  const chip=e.target.closest(".banchip");
+  if(chip){BANS.delete(chip.dataset.n);renderBans();saveHash();return;}
+  const card=e.target.closest("#items .item");
+  if(card){BANS.add(card.dataset.n);renderBans();saveHash();
+    $("status").textContent=`« ${card.dataset.n} » banni — re-Forge pour un stuff sans lui.`;}
+});
+
+fetch("webdata.json").then(r=>r.json()).then(d=>{
+  DB=d;
+  $("classe").innerHTML=Object.keys(d.spells).filter(c=>!c.includes("-alt")).sort()
+    .map(c=>`<option value="${c}"${c==="sacrieur"?" selected":""}>${c[0].toUpperCase()+c.slice(1)}</option>`).join("");
+  loadHash();
+  $("status").textContent="Prêt. Configure et clique Forger. (Astuce : clique un item du résultat pour le bannir.)";
+});
 
 $("elem").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
   elem=b.dataset.v;document.querySelectorAll("#elem button").forEach(x=>x.classList.toggle("on",x===b));});
@@ -151,7 +202,7 @@ function weights(el){const W={PA:350,PM:260,"Portée":35,Puissance:.9,Dommage:9,
 
 function spellbook(el,rollMode){
   const pick=e=>!e.max?e.min:rollMode==="max"?e.max:(e.min+e.max)/2;
-  return DB.spells.sacrieur.map(s=>{
+  return DB.spells[$("classe").value].map(s=>{
     let norm=s.effects.filter(e=>e.el===el&&!e.cc).map(pick);
     let crit=s.effects.filter(e=>e.el===el&&e.cc).map(pick);
     if(!norm.length)return null;
@@ -244,7 +295,7 @@ function prepare(){
   const pools={};
   for(const slot in slotTypes){
     const types=new Set(slotTypes[slot]);
-    const cand=DB.items.filter(it=>types.has(it.t)&&(it.lv>=160||slot.startsWith("d")||slot==="familier"));
+    const cand=DB.items.filter(it=>types.has(it.t)&&!BANS.has(it.n)&&(it.lv>=160||slot.startsWith("d")||slot==="familier"));
     cand.forEach(it=>it._r=roll(it.fx,rollMode));
     cand.sort((a,b)=>score(b)-score(a));
     const top=cand.slice(0,80);
@@ -258,7 +309,8 @@ function prepare(){
 }
 
 function optimize(env,onDone){
-  const starts=6,iters=30000;let bestF=-Infinity,bestBuild=null,run=0;
+  const [starts,iters]=$("depth").value.split(",").map(Number);
+  let bestF=-Infinity,bestBuild=null,run=0;
   function oneStart(){
     const st=makeState(env);
     for(const slot of env.slots){let it;
@@ -315,7 +367,8 @@ function render(env,build){
   $("vdpt").textContent=fmt(dmg);$("vehp").textContent=fmt(hp/Math.max(.05,1-eff/100));
   const order=["coiffe","cape","amulette","ceinture","bottes","anneau1","anneau2","arme","bouclier","d1","d2","d3","d4","d5","d6","familier"];
   $("items").innerHTML=order.filter(s=>build[s]).map(s=>{const it=build[s];
-    return `<div class="item">${(it.cd||[]).length?'<span class="cond"></span>':""}
+    return `<div class="item" data-n="${it.n.replace(/"/g,"&quot;")}" style="cursor:pointer" title="Cliquer pour bannir cet item">
+      ${(it.cd||[]).length?'<span class="cond"></span>':""}
       <img src="${it.ic}" alt="" loading="lazy">
       <div><div class="n">${it.n}</div><div class="s">${SLOTLAB[s]} · ${it.lv}</div></div></div>`;}).join("");
   const kv=[["PA / PM",(7+(tot.PA||0))+" / "+(3+(tot.PM||0))+($("mode").value!=="5,3"?" (avec exo)":"")],
@@ -339,12 +392,14 @@ function render(env,build){
 
 $("go").addEventListener("click",()=>{
   if(!DB)return;
+  saveHash();
   $("go").disabled=true;$("prog").style.display="";$("status").textContent="La forge chauffe…";
   const env=prepare();
   const t0=performance.now();
   optimize(env,(build)=>{
     $("go").disabled=false;$("prog").style.display="none";
-    $("status").textContent=`Forgé en ${((performance.now()-t0)/1000).toFixed(1)} s (6 départs × 30k itérations + polissage).`;
+    const[s,it]=$("depth").value.split(",");
+    $("status").textContent=`Forgé en ${((performance.now()-t0)/1000).toFixed(1)} s (${s} départs × ${(+it/1000)}k itérations + polissage). URL partageable copiable dans la barre d'adresse.`;
     render(env,build);
   });
 });

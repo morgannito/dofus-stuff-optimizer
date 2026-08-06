@@ -147,3 +147,36 @@ def test_spellbook_dp(tmp_path):
     # avec +30 plats/ligne, les petits sorts dominent: 4xPetit(45)+Gros(70)=250
     dmg2, _ = book.best_rotation(12, 1.0, 30, 0, 0)
     assert dmg2 == 250
+
+
+def test_spellbook_paliers_de_charge(tmp_path):
+    # >2 lignes du même élément = paliers de charge -> seule la ligne de base compte
+    spells = {'test': [{'name': 'Chargé', 'pa': 4, 'cc_rate': 0, 'lt': 1, 'effects': [
+        {'el': 't', 'steal': 0, 'cc': 0, 'min': 10, 'max': 10, 'zone': 0},
+        {'el': 't', 'steal': 0, 'cc': 0, 'min': 50, 'max': 50, 'zone': 0},
+        {'el': 't', 'steal': 0, 'cc': 0, 'min': 90, 'max': 90, 'zone': 0}]}]}
+    p = tmp_path / 's.json'
+    p.write_text(json.dumps(spells), encoding='utf-8')
+    book = R.SpellBook('test', 't', spells_path=p)
+    assert book.entries[0][2] == 10   # base normale = ligne 1 seule
+
+
+def test_lock_force_un_item():
+    a = item(1, 'A', 'Chapeau', [eff('Force', 99, 99)])
+    b = item(2, 'B', 'Chapeau', [eff('Force', 1, 1)])
+    eng = make_engine([a, b], locks={'coiffe': 'B'})
+    assert [it['name'] for it in eng.pools['coiffe']] == ['B']
+
+
+def test_ban_exclut_du_pool():
+    a = item(1, 'A', 'Chapeau', [eff('Force', 99, 99)])
+    b = item(2, 'B', 'Chapeau', [eff('Force', 1, 1)])
+    eng = make_engine([a, b], bans=['A'])
+    assert [it['name'] for it in eng.pools['coiffe']] == ['B']
+
+
+def test_roll_avg_dans_les_vecteurs():
+    a = item(1, 'A', 'Chapeau', [eff('Force', 40, 60)])
+    eng = make_engine([a], roll='avg')
+    ix = eng.stat_ix['Force']
+    assert dict(a['_vec'])[ix] == 50

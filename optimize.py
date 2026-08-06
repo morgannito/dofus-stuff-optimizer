@@ -50,7 +50,7 @@ def make_engine(args):
     pa_t, pm_t = MODES[args.mode]
     return M2, M2.Engine(base_weights(args.element), items, sets, slots,
                          pa_target=pa_t, pm_target=pm_t, res_exo_budget=args.runes,
-                         roll=args.rolls, locks=parse_locks(args.lock))
+                         roll=args.rolls, locks=parse_locks(args.lock), bans=args.ban)
 
 
 def worker(payload):
@@ -58,8 +58,9 @@ def worker(payload):
     import rotation as M3
     M2, eng = make_engine(args)
     book = M3.SpellBook(args.classe, ELEMENTS[args.element], roll=args.rolls if args.rolls != 'max' else 'avg')
-    fit = M3.RotationFitness(eng, book, ELEMENTS[args.element],
-                             w_off=1.0, w_def=args.wdef)
+    fit = M3.RotationFitness(eng, book, ELEMENTS[args.element], w_off=1.0, w_def=args.wdef,
+                             pa_budget=args.pa_budget, carac_invest=args.invest,
+                             base_vita=args.base_vita)
     b, f, _ = M3.optimize_rotation(eng, fit, starts=max(1, args.starts // args.jobs),
                                    iters=args.iters, seed=seed)
     return f, {slot: it['ankama_id'] for slot, it in b.items()}
@@ -78,6 +79,13 @@ def main():
     ap.add_argument('--lock', action='append', metavar='SLOT=ITEM',
                     help='forcer un item (ex: "arme=Masse Étacée"), répétable')
     ap.add_argument('--dofus', action='store_true', help='autoriser Dofus et Prysmaradites')
+    ap.add_argument('--ban', action='append', metavar='ITEM', default=[],
+                    help='exclure un item, répétable')
+    ap.add_argument('--pa-budget', type=int, default=12, help='PA de la rotation')
+    ap.add_argument('--invest', type=int, default=550, help='points de caracs + parchos')
+    ap.add_argument('--base-vita', type=int, default=1200)
+    ap.add_argument('--seed', type=int, default=1000)
+    ap.add_argument('--json', metavar='FICHIER', help='écrire le résultat en JSON')
     ap.add_argument('--starts', type=int, default=12)
     ap.add_argument('--iters', type=int, default=100000)
     ap.add_argument('--jobs', type=int, default=4, help='processus parallèles')
@@ -86,7 +94,7 @@ def main():
         args.wdef = PROFILS[args.profil]
 
     with ProcessPoolExecutor(args.jobs) as ex:
-        results = list(ex.map(worker, [(args, 1000 + 17 * k) for k in range(args.jobs)]))
+        results = list(ex.map(worker, [(args, args.seed + 17 * k) for k in range(args.jobs)]))
     best_f, best_ids = max(results, key=lambda r: r[0])
 
     import engine as M2
@@ -99,7 +107,9 @@ def main():
         build[slot] = by_id[aid]
         st.put(slot, by_id[aid])
     book = M3.SpellBook(args.classe, ELEMENTS[args.element], roll='avg')
-    fit = M3.RotationFitness(eng, book, ELEMENTS[args.element], w_off=1.0, w_def=args.wdef)
+    fit = M3.RotationFitness(eng, book, ELEMENTS[args.element], w_off=1.0, w_def=args.wdef,
+                             pa_budget=args.pa_budget, carac_invest=args.invest,
+                             base_vita=args.base_vita)
     stats, _ = M2.report(eng, build)
     res = [float(stats.get(r, 0)) for r in M2.RES_NAMES]
     ra = res
@@ -119,6 +129,18 @@ def main():
           f"{'/'.join(str(round(v)) for v in ra)} après runes")
     print(f"  EHP: {fit.ehp(st.tot, ra):,.0f}   DPT: {dpt:,.0f}")
     print('  rotation: ' + ', '.join(f'{n} x{c}' for n, c in rot))
+    if args.json:
+        payload = {'args': {k: v for k, v in vars(args).items()},
+                   'score': best_f, 'violations': viol,
+                   'dpt': round(dpt), 'ehp': round(fit.ehp(st.tot, ra)),
+                   'stats': stats, 'res': [round(v) for v in res],
+                   'res_apres_runes': [round(v) for v in ra],
+                   'rotation': [{'sort': n, 'casts': c} for n, c in rot],
+                   'items': [{'slot': s, 'nom': build[s]['name'],
+                              'ankama_id': build[s]['ankama_id']} for s in M2.ORDER if s in build]}
+        with open(args.json, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        print(f'  -> {args.json}')
 
 
 if __name__ == '__main__':

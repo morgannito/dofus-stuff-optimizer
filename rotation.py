@@ -78,8 +78,10 @@ class SpellBook:
 
 
 class RotationFitness:
-    def __init__(self, eng, spellbook, element, w_off=1.0, w_def=1.0, pa_budget=12):
+    def __init__(self, eng, spellbook, element, w_off=1.0, w_def=1.0, pa_budget=12,
+                 carac_invest=CARAC_INVEST, base_vita=BASE_VITA):
         self.e, self.book = eng, spellbook
+        self.invest, self.base_vita = carac_invest, base_vita
         carac, do_elem = ELEM_STAT[element]
         ix = eng.stat_ix
         g = ix.get
@@ -91,7 +93,7 @@ class RotationFitness:
         self.w_off, self.w_def, self.pa_budget = w_off, w_def, pa_budget
 
     def _mult_flats(self, t):
-        mult = 1 + (t[self.i_car] + CARAC_INVEST + t[self.i_pui]
+        mult = 1 + (t[self.i_car] + self.invest + t[self.i_pui]
                     + t[self.i_dosorts] + t[self.i_domelee]) / 100
         flats = t[self.i_do] + (t[self.i_doe] if self.i_doe is not None else 0)
         return mult, flats
@@ -107,7 +109,7 @@ class RotationFitness:
                                        t[self.i_crit], t[self.i_docrit])
 
     def ehp(self, t, res):
-        hp = BASE_VITA + t[self.i_vita]
+        hp = self.base_vita + t[self.i_vita]
         eff = 0.75 * (sum(res) / 5) + 0.25 * min(res)
         return max(hp, 1.0) / max(0.05, 1 - eff / 100)
 
