@@ -1,0 +1,23 @@
+[project]
+name = "dofus-stuff-optimizer"
+version = "1.0.0"
+description = "Optimiseur de stuff Dofus 3 (Unity) — DPT de rotation réel × EHP, conditions d'équipement, runes res"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "morgannito" }]
+keywords = ["dofus", "optimizer", "theorycraft", "simulated-annealing"]
+
+[project.urls]
+Homepage = "https://github.com/morgannito/dofus-stuff-optimizer"
+Demo = "https://morgannito.github.io/dofus-stuff-optimizer/"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["engine", "rotation", "optimize", "sweep", "gen_page", "fetch_data"]

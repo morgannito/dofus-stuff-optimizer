@@ -27,35 +27,48 @@ W = {'PA': 350, 'PM': 260, 'Portée': 35, 'Force': 1.0, 'Puissance': 0.9, 'Intel
      '% Dommages aux sorts': 11, '% Dommages mêlée': 9, "% Dommages d'armes": 1,
      'Initiative': 0.02}
 
-# (nom, base, base critique, % crit de base, PA) — rotation terre 12 PA
-ROTATION = [('Entaille', 49, 58.5, 25, 4), ('Décimation', 30.5, 36.5, 15, 3),
-            ('Ravage', 30, 36, 15, 3), ('Afflux', 13.5, 17.5, 15, 2)]
+CLASSE, ELEMENT = 'sacrieur', 't'
 PROFILS = [('Offensif', 0.7), ('Semi-offensif', 0.85), ('Équilibré', 1.0),
            ('Semi-tank', 1.2), ('Tank', 1.5)]
+
+
+def rotation_rows(book, fit, tot):
+    mult, flats = fit._mult_flats(tot)
+    critB, docrit = tot[fit.i_crit], tot[fit.i_docrit]
+    dpt, rot = book.best_rotation(fit.pa_budget, mult, flats, critB, docrit)
+    vals = {n: (pa, ccr, mult * ((1 - p) * bn + p * bcc) + nl * (flats + p * docrit))
+            for n, pa, bn, bcc, nl, ccr, lt in book.entries
+            for p in [max(0.0, min(1.0, (ccr + critB) / 100))]}
+    return dpt, [{'name': n, 'casts': c, 'pa': vals[n][0],
+                  'crit': round(min(100, vals[n][1] + critB)),
+                  'avg': round(vals[n][2])} for n, c in rot]
 
 
 def run_sweep():
     items, sets, slots = M2.load_data()
     eng = M2.Engine(W, items, sets, slots, pa_target=5, pm_target=3, res_exo_budget=28)
+    book = M3.SpellBook(CLASSE, ELEMENT, roll='avg')
     out = []
     for name, wd in PROFILS:
-        fit = M3.RotationFitness(eng, ROTATION, 'Force', 'Terre', w_off=1.0, w_def=wd)
-        b, _, _ = M3.optimize_rotation(eng, fit, starts=10, iters=120000, seed=42)
+        fit = M3.RotationFitness(eng, book, ELEMENT, w_off=1.0, w_def=wd)
+        b, _, _ = M3.optimize_rotation(eng, fit, starts=10, iters=100000, seed=42)
         st = M2.State(eng)
         for s, it in b.items():
             st.put(s, it)
         stats, _ = M2.report(eng, b)
         res = [float(stats.get(r, 0)) for r in M2.RES_NAMES]
         _, ra = st._waterfill(res)
+        dpt, rows = rotation_rows(book, fit, st.tot)
         build = [{'slot': slot, 'name': b[slot]['name'], 'level': b[slot]['level'],
                   'type': b[slot]['type']['name'], 'icon': b[slot]['image_urls']['icon'],
                   'stats': dict(M2.effect_lines(b[slot].get('effects'))),
                   'conds': [list(c) for c in b[slot]['_conds']]}
                  for slot in M2.ORDER]
-        out.append({'profil': name, 'w_def': wd, 'dpt': round(fit.dpt(st.tot)),
+        out.append({'profil': name, 'w_def': wd, 'dpt': round(dpt),
                     'ehp': round(fit.ehp(st.tot, ra)), 'stats': stats,
-                    'res_apres': [round(v) for v in ra], 'items': build})
-        print(f"[{name}] DPT={out[-1]['dpt']} EHP={out[-1]['ehp']}")
+                    'res_apres': [round(v) for v in ra], 'items': build,
+                    'rotation': rows})
+        print(f"[{name}] DPT={out[-1]['dpt']} EHP={out[-1]['ehp']} rot={[(r['name'], r['casts']) for r in rows]}")
     json.dump(out, open(DATA / 'pareto.json', 'w', encoding='utf-8'), ensure_ascii=False)
     return out
 

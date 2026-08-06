@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forge du Sacrieur — Optimiseur en direct</title>
+<style>
+:root{
+  --bg:#eef0f2; --panel:#ffffff; --ink:#241b1d; --ink2:#6b5f62; --mut:#9a8f92;
+  --accent:#c22b33; --accent-ink:#ffffff; --line:#ddd6d8; --gold:#a07d2a;
+  --neutre:#8a8a92; --terre:#8a6d3b; --feu:#d0652a; --eau:#3a7fc1; --air:#4f9e6b;
+  --ok:#3d7a4f; --shadow:0 1px 4px rgba(36,27,29,.08);
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#171215; --panel:#211a1d; --ink:#f2e9e9; --ink2:#b3a5a8; --mut:#7d7074;
+  --accent:#e4525a; --accent-ink:#1c1214; --line:#382e31; --gold:#d3a94c;
+  --neutre:#9c9ca6; --terre:#b08c50; --feu:#e58045; --eau:#5f9fd8; --air:#66b585;
+  --ok:#5da874; --shadow:0 1px 4px rgba(0,0,0,.4);
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+h1{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;font-size:clamp(24px,4vw,34px);margin:0}
+h1 em{color:var(--accent);font-style:normal}
+.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;color:var(--accent);font-weight:700;margin:0 0 4px}
+.sub{color:var(--ink2);margin:6px 0 0;max-width:70ch}
+.sub a{color:var(--accent)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:var(--shadow)}
+h2{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;font-size:17px;margin:0 0 12px}
+.controls{display:flex;flex-wrap:wrap;gap:14px;align-items:end;margin:20px 0}
+.ctl{display:flex;flex-direction:column;gap:4px}
+.ctl label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink2);font-weight:600}
+.seg{display:flex;gap:4px}
+.seg button,select,input[type=number]{border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  padding:7px 12px;border-radius:6px;font:600 13px system-ui;cursor:pointer}
+.seg button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.seg button:focus-visible,#go:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{accent-color:var(--accent);width:150px}
+#go{background:var(--accent);color:var(--accent-ink);border:none;padding:10px 22px;border-radius:6px;
+  font:700 14px system-ui;cursor:pointer}
+#go:disabled{opacity:.5;cursor:wait}
+#prog{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:12px 0;display:none}
+#prog span{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.cols{display:grid;grid-template-columns:1fr 340px;gap:20px;margin-top:8px}
+@media(max-width:860px){.cols{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.item{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px;position:relative}
+.item img{width:40px;height:40px;flex:none}
+.item .n{font-size:12.5px;font-weight:600;line-height:1.25}
+.item .s{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.item .cond{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--gold)}
+.hero{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.stat .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .l{font-size:11px;color:var(--ink2);text-transform:uppercase;letter-spacing:.08em}
+.kv{display:grid;grid-template-columns:1fr auto;row-gap:4px;font-size:13.5px;margin-bottom:14px}
+.kv span:nth-child(even){font-variant-numeric:tabular-nums;font-weight:600}
+.kv span:nth-child(odd){color:var(--ink2)}
+.res .row{display:grid;grid-template-columns:52px 1fr 74px;gap:8px;align-items:center;margin-bottom:6px;font-size:12.5px}
+.res .lab{color:var(--ink2)}
+.res .bar{height:10px;background:var(--line);border-radius:4px;position:relative}
+.res .fill{height:100%;border-radius:4px}
+.res .val{text-align:right;font-variant-numeric:tabular-nums}
+.res .val b{color:var(--ok)}
+.rot table{width:100%;border-collapse:collapse;font-size:13px}
+.rot th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);font-weight:600;padding:4px 6px;border-bottom:1px solid var(--line)}
+.rot td{padding:5px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.rot td:nth-child(n+2),.rot th:nth-child(n+2){text-align:right}
+.rot tr:last-child td{border-bottom:none;font-weight:700}
+.notes{color:var(--ink2);font-size:12.5px;margin-top:18px;max-width:75ch}
+#status{color:var(--ink2);font-size:13px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+<div class="wrap">
+<p class="eyebrow">Sacrieur niv 200 · l'optimisation tourne dans ton navigateur</p>
+<h1>Forge du <em>Sacrieur</em> — en direct</h1>
+<p class="sub">Choisis élément et curseur dégâts/survie, la forge cherche le meilleur stuff
+(recuit simulé + polissage, conditions d'équipement respectées, runes res allouées).
+Voir aussi les <a href="index.html">5 builds pré-calculés</a>.</p>
+
+<div class="controls panel">
+  <div class="ctl"><label>Élément</label>
+    <div class="seg" id="elem">
+      <button data-v="t" class="on">Terre</button><button data-v="f">Feu</button>
+      <button data-v="e">Eau</button><button data-v="a">Air</button>
+    </div></div>
+  <div class="ctl"><label>Mode PA/PM</label>
+    <select id="mode">
+      <option value="5,3">12/6 naturel</option>
+      <option value="4,3">exo PA</option>
+      <option value="4,2">exo PA + PM</option>
+    </select></div>
+  <div class="ctl"><label>Profil <span id="wdv">équilibré</span></label>
+    <input type="range" id="wdef" min="0.6" max="1.6" step="0.1" value="1.0"></div>
+  <div class="ctl"><label>Runes res (%)</label>
+    <input type="number" id="runes" value="28" min="0" max="40" style="width:70px"></div>
+  <div class="ctl"><label>Rolls</label>
+    <select id="rolls"><option value="max">parfaits</option><option value="avg">moyens</option><option value="p80">80 %</option></select></div>
+  <div class="ctl"><label>Dofus</label>
+    <select id="dofus"><option value="0">sans</option><option value="1">autorisés</option></select></div>
+  <button id="go">Forger</button>
+</div>
+<div id="prog"><span></span></div>
+<p id="status">Chargement des données…</p>
+
+<div class="cols" id="result" style="display:none">
+  <section class="panel"><h2>Équipement</h2><div class="grid" id="items"></div></section>
+  <aside>
+    <section class="panel" style="margin-bottom:16px">
+      <h2>Bilan</h2>
+      <div class="hero">
+        <div class="stat"><div class="v" id="vdpt"></div><div class="l">Dégâts / tour</div></div>
+        <div class="stat"><div class="v" id="vehp"></div><div class="l">PV effectifs</div></div>
+      </div>
+      <div class="kv" id="kv"></div>
+      <div class="res" id="res"></div>
+    </section>
+    <section class="panel rot"><h2>Rotation (12 PA)</h2><table id="rot"></table></section>
+  </aside>
+</div>
+<p class="notes">Hypothèses : caracs +550 investies dans l'élément, vita de base 1200,
+runes réparties sur les pièces magables (cap 50 %). Le point doré ● = condition d'équipement
+(vérifiée par la forge). Données DofusDude & DofusBook — non affilié à Ankama.</p>
+</div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const fmt=n=>Math.round(n).toLocaleString("fr-FR");
+const RES=["% Résistance Neutre","% Résistance Terre","% Résistance Feu","% Résistance Eau","% Résistance Air"];
+const RESL=[["Neutre","--neutre"],["Terre","--terre"],["Feu","--feu"],["Eau","--eau"],["Air","--air"]];
+const CARAC={t:"Force",f:"Intelligence",e:"Chance",a:"Agilité"};
+const DOELEM={t:"Dommage Terre",f:"Dommage Feu",e:"Dommage Eau",a:"Dommage Air"};
+const WEAPONS=new Set(["Épée","Marteau","Bâton","Dague","Baguette","Arc","Hache","Pelle","Faux","Lance"]);
+const SLOTLAB={coiffe:"Coiffe",cape:"Cape",amulette:"Amulette",ceinture:"Ceinture",bottes:"Bottes",anneau1:"Anneau",anneau2:"Anneau",arme:"Arme",bouclier:"Bouclier",d1:"Dofus/Trophée",d2:"Dofus/Trophée",d3:"Dofus/Trophée",d4:"Dofus/Trophée",d5:"Dofus/Trophée",d6:"Dofus/Trophée",familier:"Familier"};
+let DB=null, elem="t";
+
+fetch("webdata.json").then(r=>r.json()).then(d=>{DB=d;$("status").textContent="Prêt. Configure et clique Forger.";});
+
+$("elem").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  elem=b.dataset.v;document.querySelectorAll("#elem button").forEach(x=>x.classList.toggle("on",x===b));});
+$("wdef").addEventListener("input",()=>{const v=+$("wdef").value;
+  $("wdv").textContent=v<0.85?"offensif":v>1.25?"tank":"équilibré";});
+
+function roll(fx,mode){const o={};for(const k in fx){const[lo,hi]=fx[k];
+  o[k]=!hi?lo:mode==="avg"?(lo+hi)/2:mode==="p80"?lo+0.8*(hi-lo):hi;}return o;}
+
+function weights(el){const W={PA:350,PM:260,"Portée":35,Puissance:.9,Dommage:9,"Dommage Critiques":1.5,
+  "% Critique":3,"Vitalité":.7,Soin:1,"Tacle":1.3,Fuite:.8,"Esquive PA":.7,"Esquive PM":.7,
+  "Retrait PA":.6,"Retrait PM":.6,"% Dommages aux sorts":11,"% Dommages mêlée":9,
+  "% Résistance mêlée":4,"% Résistance distance":3,"Résistance Critiques":.6};
+  RES.forEach(r=>W[r]=8);W[CARAC[el]]=1;W[DOELEM[el]]=9;return W;}
+
+function spellbook(el,rollMode){
+  const pick=e=>!e.max?e.min:rollMode==="max"?e.max:(e.min+e.max)/2;
+  return DB.spells.sacrieur.map(s=>{
+    let norm=s.effects.filter(e=>e.el===el&&!e.cc).map(pick);
+    let crit=s.effects.filter(e=>e.el===el&&e.cc).map(pick);
+    if(!norm.length)return null;
+    if(norm.length>2){norm=norm.slice(0,1);crit=crit.slice(0,1);}
+    const sum=a=>a.reduce((x,y)=>x+y,0);
+    return{name:s.name,pa:s.pa,bn:sum(norm),bcc:sum(crit)||sum(norm),nl:norm.length,ccr:s.cc_rate,lt:Math.min(s.lt,4)};
+  }).filter(Boolean);
+}
+function bestRotation(book,mult,flats,critB,docrit,budget=12,detail=false){
+  const dp=new Array(budget+1).fill(0), take=detail?dp.map(()=>({})):null;
+  for(const s of book){
+    const p=Math.max(0,Math.min(1,(s.ccr+critB)/100));
+    const val=mult*((1-p)*s.bn+p*s.bcc)+s.nl*(flats+p*docrit);
+    if(val<=0)continue;
+    for(let k=0;k<s.lt;k++)for(let b=budget;b>=s.pa;b--){
+      const c=dp[b-s.pa]+val;
+      if(c>dp[b]){dp[b]=c;if(detail){take[b]={...take[b-s.pa]};take[b][s.name]=(take[b][s.name]||0)+1;}}
+    }
+  }
+  let best=0;for(let b=0;b<=budget;b++)if(dp[b]>dp[best])best=b;
+  return detail?{dmg:dp[best],rot:take[best]}:dp[best];
+}
+function waterfill(res,budget,cap=50){
+  const vals=[...res].sort((a,b)=>a-b);let level=vals[0],B=budget;
+  const steps=[...vals.slice(1),cap];
+  for(const nxt of steps){const below=vals.filter(v=>v<=level).length;
+    const need=below*(Math.min(nxt,cap)-level);
+    if(need>=B){level+=B/below;B=0;break;}B-=need;level=Math.min(nxt,cap);}
+  return res.map(v=>Math.max(v,Math.min(level,cap)));
+}
+
+function makeState(env){
+  const tot={},counts={};const build={},used=new Set();
+  const add=(fx,sg)=>{for(const k in fx)tot[k]=(tot[k]||0)+sg*fx[k];};
+  function put(slot,it){
+    const old=build[slot];
+    if(old){add(old._r,-1);used.delete(old.id);
+      if(old.set){const c=counts[old.set];setDelta(old.set,c,c-1);counts[old.set]=c-1;}}
+    build[slot]=it;add(it._r,1);used.add(it.id);
+    if(it.set){const c=counts[it.set]||0;setDelta(it.set,c,c+1);counts[it.set]=c+1;}
+    return old;
+  }
+  function setDelta(sid,a,b){const s=DB.sets[sid];if(!s)return;
+    if(s[a])add(env.setR[sid][a],-1);if(s[b])add(env.setR[sid][b],1);}
+  function violations(){
+    const nb=Object.values(counts).filter(c=>c>=2).length;
+    const char={PA:7+(tot.PA||0),PM:3+(tot.PM||0),"Bonus de panoplies":nb};
+    let bad=0;
+    for(const slot in build)for(const[cn,op,cv]of build[slot].cd||[]){
+      if(/niveau|abonné/.test(cn))continue;
+      let cur=cn in char?char[cn]:(tot[cn]||0)+100+(cn===env.carac?450:0);
+      if(op==="<"?!(cur<cv):op===">"?!(cur>cv):false)bad++;
+    }return bad;
+  }
+  function fitness(){
+    const pa=tot.PA||0,pm=tot.PM||0,po=tot["Portée"]||0;
+    let res=RES.map(r=>tot[r]||0);
+    if(env.runes)res=waterfill(res,env.runes);
+    const mult=1+((tot[env.carac]||0)+550+(tot.Puissance||0)+(tot["% Dommages aux sorts"]||0)+(tot["% Dommages mêlée"]||0))/100;
+    const flats=(tot.Dommage||0)+(tot[env.doelem]||0);
+    const dpt=Math.max(1,bestRotation(env.book,mult,flats,tot["% Critique"]||0,tot["Dommage Critiques"]||0));
+    const hp=1200+(tot["Vitalité"]||0);
+    const eff=.75*(res.reduce((a,b)=>a+b,0)/5)+.25*Math.min(...res);
+    const ehp=Math.max(1,hp)/Math.max(.05,1-eff/100);
+    let sc=3000*(Math.log(dpt)+env.wdef*Math.log(ehp));
+    sc+=350*Math.min(pa,env.paT)+260*Math.min(pm,env.pmT)+35*Math.min(po,3);
+    sc-=150*(Math.max(0,pa-env.paT)+Math.max(0,pm-env.pmT));
+    sc-=20000*(Math.max(0,env.paT-pa)+Math.max(0,env.pmT-pm));
+    sc-=20000*violations();
+    sc+=1.2*(tot.Tacle||0)+.8*(tot.Soin||0);
+    return sc;
+  }
+  return{tot,build,used,put,fitness,violations};
+}
+
+function prepare(){
+  const rollMode=$("rolls").value, dofusOk=$("dofus").value==="1";
+  const [paT,pmT]=$("mode").value.split(",").map(Number);
+  const W=weights(elem);
+  const env={carac:CARAC[elem],doelem:DOELEM[elem],paT,pmT,runes:+$("runes").value,
+    wdef:+$("wdef").value,book:spellbook(elem,rollMode==="max"?"max":"avg"),setR:{}};
+  for(const sid in DB.sets){env.setR[sid]={};
+    for(const c in DB.sets[sid])env.setR[sid][c]=roll(DB.sets[sid][c],rollMode);}
+  const dofusTypes=dofusOk?["Dofus","Trophée","Prysmaradite"]:["Trophée"];
+  const slotTypes={coiffe:["Chapeau"],cape:["Cape"],amulette:["Amulette"],ceinture:["Ceinture"],
+    bottes:["Bottes"],anneau1:["Anneau"],anneau2:["Anneau"],arme:[...WEAPONS],bouclier:["Bouclier"],
+    d1:dofusTypes,d2:dofusTypes,d3:dofusTypes,d4:dofusTypes,d5:dofusTypes,d6:dofusTypes,
+    familier:["Familier","Montilier"]};
+  const score=it=>{let s=0;for(const k in it._r)s+=(W[k]||0)*it._r[k];return s;};
+  const pools={};
+  for(const slot in slotTypes){
+    const types=new Set(slotTypes[slot]);
+    const cand=DB.items.filter(it=>types.has(it.t)&&(it.lv>=160||slot.startsWith("d")||slot==="familier"));
+    cand.forEach(it=>it._r=roll(it.fx,rollMode));
+    cand.sort((a,b)=>score(b)-score(a));
+    const top=cand.slice(0,80);
+    for(const key of["PA","PM"])
+      for(const it of[...cand].sort((a,b)=>(b._r[key]||0)-(a._r[key]||0)).slice(0,10))
+        if(!top.includes(it))top.push(it);
+    pools[slot]=top;
+  }
+  env.pools=pools;env.slots=Object.keys(pools);
+  return env;
+}
+
+function optimize(env,onDone){
+  const starts=6,iters=30000;let bestF=-Infinity,bestBuild=null,run=0;
+  function oneStart(){
+    const st=makeState(env);
+    for(const slot of env.slots){let it;
+      do{it=env.pools[slot][Math.random()*env.pools[slot].length|0];}while(st.used.has(it.id));
+      st.put(slot,it);}
+    let curF=st.fitness(),i=0;
+    function chunk(){
+      const end=Math.min(i+4000,iters);
+      for(;i<end;i++){
+        const slot=env.slots[Math.random()*env.slots.length|0];
+        const cand=env.pools[slot][Math.random()*env.pools[slot].length|0];
+        if(st.used.has(cand.id)&&cand!==st.build[slot])continue;
+        const old=st.put(slot,cand),f=st.fitness();
+        const temp=Math.max(1,3000*(1-i/iters));
+        if(f>=curF||Math.random()<Math.exp((f-curF)/temp))curF=f;
+        else st.put(slot,old);
+      }
+      $("prog").firstElementChild.style.width=(100*(run+i/iters)/starts)+"%";
+      if(i<iters){setTimeout(chunk,0);return;}
+      let improved=true;                      // polish
+      while(improved){improved=false;
+        for(const slot of env.slots){
+          let bi=st.build[slot],bf=curF;
+          for(const cand of env.pools[slot]){
+            if(st.used.has(cand.id)&&cand!==st.build[slot])continue;
+            const old=st.put(slot,cand),f=st.fitness();
+            if(f>bf+1e-9){bi=cand;bf=f;}
+            st.put(slot,old);
+          }
+          if(bi!==st.build[slot]){st.put(slot,bi);curF=bf;improved=true;}
+        }}
+      if(curF>bestF){bestF=curF;bestBuild={...st.build};}
+      run++;
+      if(run<starts)setTimeout(oneStart,0);else onDone(bestBuild,bestF);
+    }
+    chunk();
+  }
+  oneStart();
+}
+
+function render(env,build){
+  const st=makeState(env);
+  for(const slot in build)st.put(slot,build[slot]);
+  const tot=st.tot;
+  let res=RES.map(r=>tot[r]||0),ra=res;
+  if(env.runes)ra=waterfill(res,env.runes);
+  const mult=1+((tot[env.carac]||0)+550+(tot.Puissance||0)+(tot["% Dommages aux sorts"]||0)+(tot["% Dommages mêlée"]||0))/100;
+  const flats=(tot.Dommage||0)+(tot[env.doelem]||0);
+  const critB=tot["% Critique"]||0,docrit=tot["Dommage Critiques"]||0;
+  const{dmg,rot}=bestRotation(env.book,mult,flats,critB,docrit,12,true);
+  const hp=1200+(tot["Vitalité"]||0);
+  const eff=.75*(ra.reduce((a,b)=>a+b,0)/5)+.25*Math.min(...ra);
+  $("result").style.display="";
+  $("vdpt").textContent=fmt(dmg);$("vehp").textContent=fmt(hp/Math.max(.05,1-eff/100));
+  const order=["coiffe","cape","amulette","ceinture","bottes","anneau1","anneau2","arme","bouclier","d1","d2","d3","d4","d5","d6","familier"];
+  $("items").innerHTML=order.filter(s=>build[s]).map(s=>{const it=build[s];
+    return `<div class="item">${(it.cd||[]).length?'<span class="cond"></span>':""}
+      <img src="${it.ic}" alt="" loading="lazy">
+      <div><div class="n">${it.n}</div><div class="s">${SLOTLAB[s]} · ${it.lv}</div></div></div>`;}).join("");
+  const kv=[["PA / PM",(7+(tot.PA||0))+" / "+(3+(tot.PM||0))+($("mode").value!=="5,3"?" (avec exo)":"")],
+    ["Vitalité stuff",fmt(tot["Vitalité"]||0)],[env.carac+" stuff",fmt(tot[env.carac]||0)],
+    ["Puissance",fmt(tot.Puissance||0)],["% Critique",Math.round(critB)+" %"],
+    ["Do plats (élém.+neutres)",fmt(flats)],["Do critiques",fmt(docrit)],
+    ["Tacle",fmt(tot.Tacle||0)],["Soin",fmt(tot.Soin||0)],["Violations",st.violations()]];
+  $("kv").innerHTML=kv.map(([k,v])=>`<span>${k}</span><span>${v}</span>`).join("");
+  $("res").innerHTML=RESL.map(([n,cv],i)=>
+    `<div class="row"><span class="lab">${n}</span>
+     <span class="bar"><span class="fill" style="width:${Math.min(ra[i],60)/60*100}%;background:var(${cv})"></span></span>
+     <span class="val">${Math.round(res[i])} → <b>${Math.round(ra[i])} %</b></span></div>`).join("");
+  const rows=Object.entries(rot).map(([n,c])=>{
+    const s=env.book.find(x=>x.name===n);
+    const p=Math.max(0,Math.min(1,(s.ccr+critB)/100));
+    const avg=mult*((1-p)*s.bn+p*s.bcc)+s.nl*(flats+p*docrit);
+    return `<tr><td>${n}${c>1?" ×"+c:""}</td><td>${s.pa} PA</td><td>${Math.round(p*100)} %</td><td>${fmt(avg*c)}</td></tr>`;}).join("");
+  $("rot").innerHTML=`<tr><th>Sort</th><th>Coût</th><th>Crit</th><th>Moy.</th></tr>${rows}
+    <tr><td>Total par tour</td><td></td><td></td><td>${fmt(dmg)}</td></tr>`;
+}
+
+$("go").addEventListener("click",()=>{
+  if(!DB)return;
+  $("go").disabled=true;$("prog").style.display="";$("status").textContent="La forge chauffe…";
+  const env=prepare();
+  const t0=performance.now();
+  optimize(env,(build)=>{
+    $("go").disabled=false;$("prog").style.display="none";
+    $("status").textContent=`Forgé en ${((performance.now()-t0)/1000).toFixed(1)} s (6 départs × 30k itérations + polissage).`;
+    render(env,build);
+  });
+});
+</script>
+</html>

@@ -57,20 +57,33 @@ def load_data(dofus_allowed=False):
     return items, sets, slot_types
 
 
-def effect_lines(effects):
+def effect_lines(effects, roll='max'):
     for e in effects or []:
-        if not e['type'].get('is_active'):
-            yield e['type']['name'], (e.get('int_maximum') or e.get('int_minimum') or 0)
+        if e['type'].get('is_active'):
+            continue
+        lo, hi = e.get('int_minimum') or 0, e.get('int_maximum') or 0
+        if not hi:
+            v = lo
+        elif roll == 'avg':
+            v = (lo + hi) / 2
+        elif roll == 'p80':
+            v = lo + 0.8 * (hi - lo)
+        else:
+            v = hi
+        yield e['type']['name'], v
 
 
 class Engine:
     """Indexe les stats utiles, projette items et bonus de panos en vecteurs compacts."""
 
     def __init__(self, W, items, sets, slot_types, pa_target=5, pm_target=3,
-                 res_exo_budget=0.0, res_cap=50.0):
+                 res_exo_budget=0.0, res_cap=50.0, roll='max', locks=None):
         # res_exo_budget: total de % res ajoutable à la rune (ex: 8 pièces x 3.5%),
         # alloué optimalement par water-filling dans fitness(). Trophées/Dofus non magables.
+        # roll: 'max' | 'avg' | 'p80' — jet des stats d'items.
+        # locks: {slot: nom d'item} — force un item possédé dans un slot.
         self.res_budget, self.res_cap = res_exo_budget, res_cap
+        self.roll = roll
         self.stat_ix = {}
         for name in list(W) + ['PA', 'PM', 'Portée'] + RES_NAMES:
             self.stat_ix.setdefault(name, len(self.stat_ix))
@@ -92,10 +105,16 @@ class Engine:
             eff = s.get('effects') or {}
             self.set_vecs[sid] = {int(k): self._vec(v) for k, v in eff.items()}
         self.pools = self._pools(W, slot_types)
+        for slot, name in (locks or {}).items():
+            match = [it for it in items if it['name'] == name
+                     and it['type']['name'] in slot_types[slot]]
+            if not match:
+                raise KeyError(f"lock impossible: '{name}' introuvable pour le slot {slot}")
+            self.pools[slot] = match[:1]
 
     def _vec(self, effects):
-        acc = defaultdict(int)
-        for name, v in effect_lines(effects):
+        acc = defaultdict(float)
+        for name, v in effect_lines(effects, self.roll):
             if name in self.stat_ix:
                 acc[self.stat_ix[name]] += v
         return list(acc.items())

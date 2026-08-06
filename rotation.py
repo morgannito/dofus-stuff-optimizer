@@ -1,49 +1,114 @@
 # -*- coding: utf-8 -*-
-"""Optimiseur v4 — objectif physique: DPT réel de la rotation x EHP, plus de poids arbitraires.
+"""Objectif physique v5 — DPT de la MEILLEURE rotation (knapsack DP) × EHP.
 
-DPT: formule officielle Dofus par ligne, crits espérés (base sort + %crit stuff).
-EHP: PV totaux / (1 - res_moyenne_après_runes), pénalisé par la res min.
-Score = ln(DPT)*w_off + ln(EHP)*w_def + utilité (tacle, soin, esquives) — le produit
-force le compromis: doubler ses dégâts vaut autant que doubler sa survie.
+La rotation n'est plus figée : à chaque évaluation, un sac-à-dos 0/1 sur les PA
+choisit la meilleure combinaison de sorts (limites de lancers respectées) selon
+les stats courantes du stuff. Un stuff crit et un stuff plats ne jouent pas les
+mêmes sorts — l'optimiseur le sait.
 """
+import json
 import math
+from pathlib import Path
+
 import engine as M2
 
 BASE_VITA = 1200      # vita de base niv 200 + parcho
-CARAC_INVEST = 550    # points de caracs + parcho sur l'élément principal
+CARAC_INVEST = 550    # points de caracs + parchemins sur l'élément principal
+ELEM_STAT = {'t': ('Force', 'Dommage Terre'), 'f': ('Intelligence', 'Dommage Feu'),
+             'e': ('Chance', 'Dommage Eau'), 'a': ('Agilité', 'Dommage Air')}
+
+
+class SpellBook:
+    """Sorts de dégâts d'une classe/élément, agrégés pour le DP de rotation."""
+
+    def __init__(self, classe, element, roll='avg', spells_path=None):
+        path = spells_path or Path(__file__).resolve().parent / 'data' / 'spells.json'
+        all_spells = json.load(open(path, encoding='utf-8'))
+        if classe not in all_spells:
+            raise KeyError(f"classe inconnue: {classe} (dispo: {', '.join(sorted(all_spells))})")
+        pick = {'max': lambda e: e['max'] or e['min'],
+                'avg': lambda e: (e['min'] + e['max']) / 2 if e['max'] else e['min'],
+                'p80': lambda e: e['min'] + 0.8 * (e['max'] - e['min']) if e['max'] else e['min']}[roll]
+        self.entries = []  # (pa, base_normale, base_cc, nb_lignes, cc_rate, lancers/tour)
+        for s in all_spells[classe]:
+            norm = [pick(e) for e in s['effects'] if e['el'] == element and not e['cc']]
+            crit = [pick(e) for e in s['effects'] if e['el'] == element and e['cc']]
+            if not norm:
+                continue
+            if len(norm) > 2:   # >2 lignes = paliers de charge, pas du multi-hit: ligne de base seule
+                norm, crit = norm[:1], crit[:1]
+            self.entries.append((s['name'], s['pa'], sum(norm), sum(crit) or sum(norm),
+                                 len(norm), s['cc_rate'], min(s['lt'], 4)))
+
+    def best_rotation(self, pa_budget, mult, flats, crit_bonus, docrit):
+        """Knapsack 0/1 (sorts dupliqués par lancer) -> (dégâts, [(sort, casts)])."""
+        items = []
+        for name, pa, bn, bcc, nl, ccr, lt in self.entries:
+            p = max(0.0, min(1.0, (ccr + crit_bonus) / 100))
+            val = mult * ((1 - p) * bn + p * bcc) + nl * (flats + p * docrit)
+            if val > 0:
+                items.extend([(pa, val, name)] * lt)
+        dp = [0.0] * (pa_budget + 1)
+        take = [dict() for _ in range(pa_budget + 1)]
+        for pa, val, name in items:
+            for b in range(pa_budget, pa - 1, -1):
+                cand = dp[b - pa] + val
+                if cand > dp[b] and take[b - pa].get(name, 0) < 99:
+                    dp[b] = cand
+                    take[b] = dict(take[b - pa])
+                    take[b][name] = take[b].get(name, 0) + 1
+        best = max(range(pa_budget + 1), key=lambda b: dp[b])
+        return dp[best], sorted(take[best].items())
+
+    def dpt_fast(self, pa_budget, mult, flats, crit_bonus, docrit):
+        """Version sans reconstruction, pour la boucle chaude."""
+        dp = [0.0] * (pa_budget + 1)
+        for name, pa, bn, bcc, nl, ccr, lt in self.entries:
+            p = (ccr + crit_bonus) / 100
+            p = 0.0 if p < 0 else (1.0 if p > 1 else p)
+            val = mult * ((1 - p) * bn + p * bcc) + nl * (flats + p * docrit)
+            if val <= 0:
+                continue
+            for _ in range(lt):
+                for b in range(pa_budget, pa - 1, -1):
+                    cand = dp[b - pa] + val
+                    if cand > dp[b]:
+                        dp[b] = cand
+        return dp[pa_budget]
 
 
 class RotationFitness:
-    def __init__(self, eng, rotation, carac_name, element, w_off=1.0, w_def=1.0):
-        self.e = eng
-        self.rot = rotation  # [(nom, base, base_cc, cc_rate, pa)]
+    def __init__(self, eng, spellbook, element, w_off=1.0, w_def=1.0, pa_budget=12):
+        self.e, self.book = eng, spellbook
+        carac, do_elem = ELEM_STAT[element]
         ix = eng.stat_ix
-        self.i_car = ix[carac_name]
-        g = lambda n: ix.get(n)
+        g = ix.get
+        self.i_car, self.i_doe = ix[carac], g(do_elem)
         self.i_pui, self.i_crit = g('Puissance'), g('% Critique')
-        self.i_do, self.i_doe = g('Dommage'), g(f'Dommage {element}')
-        self.i_docrit = g('Dommage Critiques')
+        self.i_do, self.i_docrit = g('Dommage'), g('Dommage Critiques')
         self.i_dosorts, self.i_domelee = g('% Dommages aux sorts'), g('% Dommages mêlée')
         self.i_vita, self.i_tacle, self.i_soin = g('Vitalité'), g('Tacle'), g('Soin')
-        self.w_off, self.w_def = w_off, w_def
+        self.w_off, self.w_def, self.pa_budget = w_off, w_def, pa_budget
 
-    def dpt(self, t):
+    def _mult_flats(self, t):
         mult = 1 + (t[self.i_car] + CARAC_INVEST + t[self.i_pui]
                     + t[self.i_dosorts] + t[self.i_domelee]) / 100
-        flats = t[self.i_do] + (t[self.i_doe] or 0)
-        crit_bonus = t[self.i_crit]
-        total = 0.0
-        for _, base, base_cc, cc, _pa in self.rot:
-            p = max(0.0, min(1.0, (cc + crit_bonus) / 100))
-            normal = base * mult + flats
-            critic = base_cc * mult + flats + t[self.i_docrit]
-            total += (1 - p) * normal + p * critic
-        return max(total, 1.0)
+        flats = t[self.i_do] + (t[self.i_doe] if self.i_doe is not None else 0)
+        return mult, flats
+
+    def dpt(self, t):
+        mult, flats = self._mult_flats(t)
+        return max(1.0, self.book.dpt_fast(self.pa_budget, mult, flats,
+                                           t[self.i_crit], t[self.i_docrit]))
+
+    def rotation(self, t):
+        mult, flats = self._mult_flats(t)
+        return self.book.best_rotation(self.pa_budget, mult, flats,
+                                       t[self.i_crit], t[self.i_docrit])
 
     def ehp(self, t, res):
         hp = BASE_VITA + t[self.i_vita]
-        avg = sum(res) / 5
-        eff = 0.75 * avg + 0.25 * min(res)   # la res min est celle qu'on exploite
+        eff = 0.75 * (sum(res) / 5) + 0.25 * min(res)
         return max(hp, 1.0) / max(0.05, 1 - eff / 100)
 
     def __call__(self, st):
@@ -61,7 +126,7 @@ class RotationFitness:
         return sc
 
 
-def optimize_rotation(eng, fit, starts=12, iters=150000, seed=0, converge_stop=3):
+def optimize_rotation(eng, fit, starts=12, iters=120000, seed=0, converge_stop=3):
     import random
     rng = random.Random(seed)
     slots = list(eng.pools)
@@ -97,6 +162,7 @@ def optimize_rotation(eng, fit, starts=12, iters=150000, seed=0, converge_stop=3
 
 
 def polish_rotation(eng, st, fit):
+    """Steepest-ascent exhaustif: optimum local 1-swap sur les pools."""
     cur_f = fit(st)
     improved = True
     while improved:

@@ -151,7 +151,6 @@ sont satisfaites par ces builds. Données items : DofusDude (Dofus 3 / Unity).</
 <script>
 const BUILDS=__BUILDS__;
 const ICONS=__ICONS__;
-const ROT=[["Entaille",49,58.5,25,4],["Décimation",30.5,36.5,15,3],["Ravage",30,36,15,3],["Afflux",13.5,17.5,15,2]];
 const SLOTS={coiffe:"Coiffe",cape:"Cape",amulette:"Amulette",ceinture:"Ceinture",bottes:"Bottes",
 anneau1:"Anneau",anneau2:"Anneau",arme:"Arme",bouclier:"Bouclier",d1:"Trophée",d2:"Trophée",
 d3:"Trophée",d4:"Trophée",d5:"Trophée",d6:"Trophée",familier:"Familier"};
@@ -191,17 +190,11 @@ function render(){
       <span class="cap"></span></span>
       <span class="val">${before} → <b>${after} %</b></span></div>`;
   }).join("");
-  const mult=1+((st["Force"]||0)+550+(st["Puissance"]||0)+(st["% Dommages aux sorts"]||0)+(st["% Dommages mêlée"]||0))/100;
-  const flats=(st["Dommage"]||0)+(st["Dommage Terre"]||0), critB=st["% Critique"]||0, docrit=st["Dommage Critiques"]||0;
-  let tot=0;
-  const rows=ROT.map(([n,base,bcc,cc,pa])=>{
-    const p=Math.max(0,Math.min(1,(cc+critB)/100));
-    const avg=(1-p)*(base*mult+flats)+p*(bcc*mult+flats+docrit);
-    tot+=avg;
-    return `<tr><td>${n}</td><td>${pa} PA</td><td>${Math.round(p*100)} %</td><td>${fmt(Math.round(avg))}</td></tr>`;
-  }).join("");
+  const rows=b.rotation.map(r=>
+    `<tr><td>${r.name}${r.casts>1?" ×"+r.casts:""}</td><td>${r.pa} PA</td><td>${r.crit} %</td><td>${fmt(r.avg*r.casts)}</td></tr>`
+  ).join("");
   $("rot").innerHTML=`<tr><th>Sort</th><th>Coût</th><th>Crit</th><th>Moy.</th></tr>${rows}
-    <tr><td>Total par tour</td><td></td><td></td><td>${fmt(Math.round(tot))}</td></tr>`;
+    <tr><td>Total par tour</td><td></td><td></td><td>${fmt(b.dpt)}</td></tr>`;
 }
 $("picker").innerHTML=BUILDS.map((b,i)=>`<button type="button" data-i="${i}">${b.profil}</button>`).join("");
 $("picker").addEventListener("click",e=>{const b=e.target.closest("button");if(b){cur=+b.dataset.i;render();}});

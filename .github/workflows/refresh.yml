@@ -1,0 +1,28 @@
+name: refresh-data
+on:
+  schedule:
+    - cron: '0 4 * * 1'   # lundi 04:00 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Données DofusDude
+        run: python fetch_data.py
+      - name: Sweep + page
+        run: |
+          python sweep.py
+          python gen_page.py
+      - name: Commit si la page a changé
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html
+          git diff --cached --quiet || git commit -m "refresh: données DofusDude + re-sweep hebdo"
+          git push
